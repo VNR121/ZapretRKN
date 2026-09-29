@@ -1,0 +1,17 @@
+# Временные файлы
+utils/backup/
+utils/test results/
+ipset_switched.flag
+utils/game_filter.enabled
+utils/check_updates.enabled
+*.tmp
+*.log
+
+# Сборка
+dev/
+release/
+*.zip
+
+# Системные файлы
+Thumbs.db
+Desktop.ini
