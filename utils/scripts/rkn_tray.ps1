@@ -26,7 +26,7 @@ $projectRoot = Split-Path -Parent $utilsDir
 $iconPath    = Join-Path $scriptDir "icon.ico"
 $vbsPath     = Join-Path $scriptDir "run_hidden.vbs"
 $serviceBat  = Join-Path $projectRoot "service.bat"
-$generalBat  = Join-Path $projectRoot "general (ALT11).bat"
+$generalBat  = Join-Path $projectRoot "general.bat"
 "ProjectRoot: $projectRoot" | Out-File -Append -Encoding UTF8 $logPath
 
 # --- Dark renderer + custom menu renderer ---

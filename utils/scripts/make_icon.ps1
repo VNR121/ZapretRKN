@@ -34,28 +34,28 @@ function New-ZapretIcon {
         # --- Белая область над синей линией ---
         # Работаем в повёрнутой на 135° системе — там линия горизонтальна.
         # Всё, что выше линии (y < 0), заливаем белым.
-        $stripeThickness = [single]($size * 0.20)
+        $stripeThickness = [single]($size * 0.25)
         $state = $g.Save()
         $g.SetClip($circlePath)
         $center = [single]($size / 2)
         $g.TranslateTransform($center, $center)
         $g.RotateTransform(135)
 
-        $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 235, 235, 240))
+        $whiteBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 225, 225, 240))
         # Прямоугольник: сверху от -1.5*size до границы линии (-thickness/2)
         $g.FillRectangle(
             $whiteBrush,
             [single](-$size * 1.5),
-            [single](-$size * 1.5),
+            [single]($stripeThickness / 2),
             [single]($size * 3),
-            [single]($size * 1.5 - $stripeThickness / 2)
+            [single]($size * 1.5)
         )
         $g.Restore($state)
 
         # --- Внутренняя тень (объём) ---
         $innerBrush = New-Object System.Drawing.Drawing2D.PathGradientBrush($circlePath)
         $innerBrush.CenterColor = [System.Drawing.Color]::FromArgb(0, 0, 0, 0)
-        $innerBrush.SurroundColors = @([System.Drawing.Color]::FromArgb(47, 0, 0, 0))
+        $innerBrush.SurroundColors = @([System.Drawing.Color]::FromArgb(25, 0, 0, 0))
         $g.FillEllipse($innerBrush, 0, 0, $size - 1, $size - 1)
         $innerBrush.Dispose()
 
@@ -63,7 +63,7 @@ function New-ZapretIcon {
         $state = $g.Save()
         $g.TranslateTransform($center, $center)
         $g.RotateTransform(135)
-        $blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(145, 70, 130, 200))
+        $blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(195, 10, 10, 221))
         $g.FillRectangle($blueBrush, [single](-$size * 1.5), [single](-$stripeThickness / 2), [single]($size * 3), $stripeThickness)
         $g.Restore($state)
 

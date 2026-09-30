@@ -17,6 +17,15 @@ echo   Установка ZapretRKN
 echo ========================================
 echo.
 
+:: --- Шаг 0: Проверка кириллицы в пути ---
+echo %~dp0 | findstr /R /C:"[А-Яа-яЁё]" >nul
+if not errorlevel 1 (
+    echo [ОШИБКА] Путь содержит русские буквы: %~dp0
+    echo Перенесите папку в C:\ZapretRKN и запустите снова.
+    timeout /t 10 /nobreak >nul
+    exit /b 1
+)
+
 :: --- Шаг 1: Автозагрузка ---
 set "AUTOSTART=Y"
 set /p "AUTOSTART=Добавить ZapretRKN в автозагрузку при включении ПК? [Y/n]: "
@@ -33,10 +42,10 @@ echo.
 
 :: --- Шаг 2: Проверка файла ---
 set "SHORTCUT_NAME=ZapretRKN"
-set "TARGET_BAT=%~dp0general (ALT11).bat"
+set "TARGET_BAT=%~dp0general.bat"
 
 if not exist "%TARGET_BAT%" (
-    echo [ОШИБКА] Не найден файл "general (ALT11).bat"
+    echo [ОШИБКА] Не найден файл "general.bat"
     timeout /t 5 /nobreak >nul
     exit /b 1
 )
@@ -59,7 +68,7 @@ set "PS1=%TEMP%\zapret_make_shortcut.ps1"
 >> "%PS1%" echo $ws = New-Object -ComObject WScript.Shell
 >> "%PS1%" echo $sc = $ws.CreateShortcut($lnkPath)
 >> "%PS1%" echo $sc.TargetPath = "$env:SystemRoot\System32\cmd.exe"
->> "%PS1%" echo $sc.Arguments = '/c ""%~dp0general (ALT11).bat""'
+>> "%PS1%" echo $sc.Arguments = '/c ""%~dp0general.bat""'
 >> "%PS1%" echo $sc.WorkingDirectory = '%~dp0'
 >> "%PS1%" echo $sc.IconLocation = '%ICON%'
 >> "%PS1%" echo $sc.Description = 'ZapretRKN DPI bypass'
@@ -86,7 +95,7 @@ if "%AUTOSTART_FLAG%"=="1" (
     echo Регистрация задачи автозагрузки...
 
     > "%PS2%" echo $ErrorActionPreference = 'Stop'
-    >> "%PS2%" echo $batPath = '%~dp0general (ALT11).bat'
+    >> "%PS2%" echo $batPath = '%~dp0general.bat'
     >> "%PS2%" echo $vbs = '%~dp0utils\scripts\run_hidden.vbs'
     >> "%PS2%" echo $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $vbs + '" "' + $batPath + '"')
     >> "%PS2%" echo $trigger = New-ScheduledTaskTrigger -AtLogOn
