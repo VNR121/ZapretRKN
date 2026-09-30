@@ -97,7 +97,8 @@ if "%AUTOSTART_FLAG%"=="1" (
     > "%PS2%" echo $ErrorActionPreference = 'Stop'
     >> "%PS2%" echo $batPath = '%~dp0general.bat'
     >> "%PS2%" echo $vbs = '%~dp0utils\scripts\run_hidden.vbs'
-    >> "%PS2%" echo $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $vbs + '" "' + $batPath + '"')
+    >> "%PS2%" echo $q = [char]34
+    >> "%PS2%" echo $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ^($q + $vbs + $q + ' ' + $q + $batPath + $q^)
     >> "%PS2%" echo $trigger = New-ScheduledTaskTrigger -AtLogOn
     >> "%PS2%" echo $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -RunLevel Highest
     >> "%PS2%" echo $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
