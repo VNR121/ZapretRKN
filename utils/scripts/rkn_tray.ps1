@@ -7,29 +7,24 @@ try {
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-"Assemblies loaded" | Out-File -Append -Encoding UTF8 $logPath
 
-# --- Single instance (Local, без Global\) ---
 $mutex = New-Object System.Threading.Mutex($false, "Local\ZapretRKNTray_v1")
 $acquired = $false
 try { $acquired = $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $acquired = $true }
-if (-not $acquired) {
-    "Mutex already held, exiting" | Out-File -Append -Encoding UTF8 $logPath
-    exit
-}
-"Mutex acquired" | Out-File -Append -Encoding UTF8 $logPath
+if (-not $acquired) { exit }
 
-# --- Paths ---
-$scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$utilsDir    = Split-Path -Parent $scriptDir
-$projectRoot = Split-Path -Parent $utilsDir
-$iconPath    = Join-Path $scriptDir "icon.ico"
-$vbsPath     = Join-Path $scriptDir "run_hidden.vbs"
-$serviceBat  = Join-Path $projectRoot "service.bat"
-$generalBat  = Join-Path $projectRoot "general.bat"
-"ProjectRoot: $projectRoot" | Out-File -Append -Encoding UTF8 $logPath
+$scriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$utilsDir     = Split-Path -Parent $scriptDir
+$projectRoot  = Split-Path -Parent $utilsDir
+$iconPath     = Join-Path $scriptDir "icon.ico"
+$iconGreyPath = Join-Path $scriptDir "icon_grey.ico"
+$vbsPath      = Join-Path $scriptDir "run_hidden.vbs"
+$checkerPath  = Join-Path $scriptDir "check_updates.ps1"
+$serviceBat   = Join-Path $projectRoot "service.bat"
+$generalBat   = Join-Path $projectRoot "general.bat"
+$updateFile   = Join-Path $env:TEMP "zapret_update.txt"
 
-# --- Dark renderer + custom menu renderer ---
+# --- Dark renderer ---
 if (-not ("ZapretRKN_MenuRenderer" -as [type])) {
     $wfPath      = [System.Windows.Forms.Form].Assembly.Location
     $drawingPath = [System.Drawing.Bitmap].Assembly.Location
@@ -65,26 +60,18 @@ public class ZapretRKN_MenuRenderer : ToolStripProfessionalRenderer
         {
             Rectangle r = new Rectangle(0, 0, e.Item.Width, e.Item.Height);
             using (SolidBrush b = new SolidBrush(Color.FromArgb(50, 60, 60, 60)))
-            {
                 e.Graphics.FillRectangle(b, r);
-            }
             using (SolidBrush accent = new SolidBrush(Color.FromArgb(80, 140, 210)))
-            {
                 e.Graphics.FillRectangle(accent, 0, 0, 3, e.Item.Height);
-            }
         }
     }
 
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
     {
         if (e.Item.Enabled)
-        {
             e.TextColor = Color.FromArgb(235, 235, 235);
-        }
         else
-        {
             e.TextColor = Color.FromArgb(130, 130, 130);
-        }
         base.OnRenderItemText(e);
     }
 
@@ -98,7 +85,6 @@ public class ZapretRKN_MenuRenderer : ToolStripProfessionalRenderer
     }
 }
 "@
-    "Renderer compiled" | Out-File -Append -Encoding UTF8 $logPath
 }
 
 if (-not ("ZapretRKN_WinApi" -as [type])) {
@@ -111,31 +97,31 @@ public class ZapretRKN_WinApi {
 "@
 }
 
-# --- Icon loading with PNG-framed fallback ---
-$icon = $null
-if (Test-Path $iconPath) {
-    try {
-        $icon = New-Object System.Drawing.Icon($iconPath)
-        "Icon loaded directly" | Out-File -Append -Encoding UTF8 $logPath
-    } catch {
-        "Direct icon load failed: $($_.Exception.Message)" | Out-File -Append -Encoding UTF8 $logPath
+function Load-Icon($path) {
+    if (-not (Test-Path $path)) { return $null }
+    try { return New-Object System.Drawing.Icon($path) } catch {
         try {
-            $bmp   = New-Object System.Drawing.Bitmap($iconPath)
-            $hicon = $bmp.GetHicon()
-            $icon  = [System.Drawing.Icon]::FromHandle($hicon)
-            "Icon loaded via Bitmap->Hicon fallback" | Out-File -Append -Encoding UTF8 $logPath
-        } catch {
-            "Bitmap fallback failed: $($_.Exception.Message)" | Out-File -Append -Encoding UTF8 $logPath
-            $icon = $null
-        }
+            $bmp = New-Object System.Drawing.Bitmap($path)
+            $h = $bmp.GetHicon()
+            return [System.Drawing.Icon]::FromHandle($h)
+        } catch { return $null }
     }
 }
-if ($null -eq $icon) {
-    $icon = [System.Drawing.SystemIcons]::Application
-    "Using system fallback icon" | Out-File -Append -Encoding UTF8 $logPath
+
+$iconRed  = Load-Icon $iconPath
+$iconGrey = Load-Icon $iconGreyPath
+if ($null -eq $iconRed)  { $iconRed  = [System.Drawing.SystemIcons]::Application }
+if ($null -eq $iconGrey) { $iconGrey = $iconRed }
+
+$script:localVersion    = $null
+$script:notifiedVersion = $null
+$script:releaseUrl      = "https://github.com/VNR121/ZapretRKN/releases/latest"
+
+if (Test-Path $serviceBat) {
+    $content = Get-Content $serviceBat -Raw
+    if ($content -match 'LOCAL_VERSION=([\d\.]+)') { $script:localVersion = $matches[1] }
 }
 
-# --- Helpers ---
 function Get-ZapretStatus {
     $p = Get-Process -Name winws -ErrorAction SilentlyContinue
     if ($p) { return "running" } else { return "stopped" }
@@ -147,11 +133,9 @@ function Test-Autostart {
 }
 
 function Hide-WinwsWindow {
-    $procs = Get-Process -Name winws -ErrorAction SilentlyContinue
-    foreach ($p in $procs) {
-        $hwnd = $p.MainWindowHandle
-        if ($hwnd -ne [IntPtr]::Zero) {
-            [ZapretRKN_WinApi]::ShowWindow($hwnd, 0) | Out-Null
+    Get-Process -Name winws -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.MainWindowHandle -ne [IntPtr]::Zero) {
+            [ZapretRKN_WinApi]::ShowWindow($_.MainWindowHandle, 0) | Out-Null
         }
     }
 }
@@ -167,14 +151,19 @@ function Start-Zapret {
     Hide-WinwsWindow
 }
 
-# --- NotifyIcon ---
+function Start-UpdateCheck {
+    if (-not (Test-Path $checkerPath)) { return }
+    Remove-Item $updateFile -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-WindowStyle","Hidden","-File","`"$checkerPath`"" `
+        -WindowStyle Hidden
+}
+
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
-$notifyIcon.Icon    = $icon
+$notifyIcon.Icon    = $iconRed
 $notifyIcon.Text    = "ZapretRKN"
 $notifyIcon.Visible = $true
-"NotifyIcon visible" | Out-File -Append -Encoding UTF8 $logPath
 
-# --- Menu ---
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $menu.Renderer = New-Object ZapretRKN_MenuRenderer
 $menu.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 32)
@@ -185,17 +174,17 @@ $menu.Padding = New-Object System.Windows.Forms.Padding(0, 3, 0, 3)
 
 $itemHeader    = New-Object System.Windows.Forms.ToolStripMenuItem("ZapretRKN")
 $itemHeader.Enabled = $false
-
 $itemToggle    = New-Object System.Windows.Forms.ToolStripMenuItem("Остановить")
 $itemRestart   = New-Object System.Windows.Forms.ToolStripMenuItem("Перезапустить")
 $itemService   = New-Object System.Windows.Forms.ToolStripMenuItem("Менеджер службы")
 $itemFolder    = New-Object System.Windows.Forms.ToolStripMenuItem("Открыть папку ZapretRKN")
 $itemAutostart = New-Object System.Windows.Forms.ToolStripMenuItem("Автозагрузка: выкл")
+$itemCheckUpd  = New-Object System.Windows.Forms.ToolStripMenuItem("Проверить обновления")
 $itemAbout     = New-Object System.Windows.Forms.ToolStripMenuItem("О программе")
 $itemExit      = New-Object System.Windows.Forms.ToolStripMenuItem("Выход")
 
 $itemPadding = New-Object System.Windows.Forms.Padding(10, 3, 20, 3)
-foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAutostart, $itemAbout, $itemExit)) {
+foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAutostart, $itemCheckUpd, $itemAbout, $itemExit)) {
     $it.Padding = $itemPadding
 }
 
@@ -207,19 +196,21 @@ foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAut
 [void]$menu.Items.Add($itemFolder)
 [void]$menu.Items.Add($itemAutostart)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+[void]$menu.Items.Add($itemCheckUpd)
 [void]$menu.Items.Add($itemAbout)
 [void]$menu.Items.Add($itemExit)
 
 $notifyIcon.ContextMenuStrip = $menu
 
-# --- State updater ---
 function Update-TrayState {
     $status = Get-ZapretStatus
     if ($status -eq "running") {
+        $script:notifyIcon.Icon = $script:iconRed
         $script:notifyIcon.Text = "ZapretRKN - работает"
         $script:itemToggle.Text = "Остановить"
         $script:itemHeader.Text = "ZapretRKN - работает"
     } else {
+        $script:notifyIcon.Icon = $script:iconGrey
         $script:notifyIcon.Text = "ZapretRKN - остановлен"
         $script:itemToggle.Text = "Запустить"
         $script:itemHeader.Text = "ZapretRKN - остановлен"
@@ -231,7 +222,10 @@ function Update-TrayState {
     }
 }
 
-# --- Events ---
+$notifyIcon.add_BalloonTipClicked({
+    Start-Process $script:releaseUrl
+})
+
 $notifyIcon.add_MouseClick({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
@@ -248,11 +242,7 @@ $notifyIcon.add_DoubleClick({
 })
 
 $itemToggle.add_Click({
-    if ((Get-ZapretStatus) -eq "running") {
-        Stop-Zapret
-    } else {
-        Start-Zapret
-    }
+    if ((Get-ZapretStatus) -eq "running") { Stop-Zapret } else { Start-Zapret }
     Update-TrayState
 })
 
@@ -284,9 +274,18 @@ $itemAutostart.add_Click({
     Update-TrayState
 })
 
+$itemCheckUpd.add_Click({
+    $script:notifiedVersion = $null
+    Start-UpdateCheck
+    $script:notifyIcon.BalloonTipTitle = "ZapretRKN"
+    $script:notifyIcon.BalloonTipText  = "Проверка обновлений запущена..."
+    $script:notifyIcon.BalloonTipIcon  = [System.Windows.Forms.ToolTipIcon]::Info
+    $script:notifyIcon.ShowBalloonTip(2000)
+})
+
 $itemAbout.add_Click({
     [System.Windows.Forms.MessageBox]::Show(
-        "ZapretRKN v1.1.1`nОбход DPI-блокировок`n`nФорк Flowseal/zapret-discord-youtube`nhttps://github.com/VNR121/ZapretRKN",
+        "ZapretRKN v1.2.0`nОбход DPI-блокировок`n`nФорк Flowseal/zapret-discord-youtube`nhttps://github.com/VNR121/ZapretRKN",
         "О программе",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
@@ -299,7 +298,6 @@ $itemExit.add_Click({
     [System.Windows.Forms.Application]::Exit()
 })
 
-# --- Initial hide + state ---
 Start-Sleep -Milliseconds 100
 Hide-WinwsWindow
 Start-Sleep -Milliseconds 400
@@ -308,13 +306,47 @@ Start-Sleep -Milliseconds 800
 Hide-WinwsWindow
 Update-TrayState
 
-# --- Timer ---
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 3000
 $timer.add_Tick({ Update-TrayState })
 $timer.Start()
 
-"Entering message loop" | Out-File -Append -Encoding UTF8 $logPath
+$updTimer = New-Object System.Windows.Forms.Timer
+$updTimer.Interval = 5000
+$updTimer.add_Tick({
+    if (Test-Path $script:updateFile) {
+        $data = ""
+        try { $data = (Get-Content $script:updateFile -Raw -ErrorAction Stop).Trim() } catch { }
+        Remove-Item $script:updateFile -Force -ErrorAction SilentlyContinue
+        if ($data -match '^(.+)\|(.+)$') {
+            $remote = $matches[1]
+            $local  = $matches[2]
+            if ($remote -ne $script:notifiedVersion) {
+                $script:notifiedVersion = $remote
+                $script:notifyIcon.BalloonTipTitle = "ZapretRKN - доступно обновление"
+                $script:notifyIcon.BalloonTipText  = "Текущая: $local. Новая: $remote. Клик - открыть страницу."
+                $script:notifyIcon.BalloonTipIcon  = [System.Windows.Forms.ToolTipIcon]::Info
+                $script:notifyIcon.ShowBalloonTip(10000)
+            }
+        }
+    }
+})
+$updTimer.Start()
+
+$initTimer = New-Object System.Windows.Forms.Timer
+$initTimer.Interval = 30000
+$initTimer.add_Tick({
+    $initTimer.Stop()
+    $initTimer.Dispose()
+    Start-UpdateCheck
+})
+$initTimer.Start()
+
+$verTimer = New-Object System.Windows.Forms.Timer
+$verTimer.Interval = 43200000
+$verTimer.add_Tick({ Start-UpdateCheck })
+$verTimer.Start()
+
 [System.Windows.Forms.Application]::Run()
 
 } catch {

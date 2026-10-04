@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-set "LOCAL_VERSION=1.1.2"
+set "LOCAL_VERSION=1.2.0"
 
 :: External commands
 if "%~1"=="status_zapret" (
@@ -437,7 +437,6 @@ goto menu
 chcp 65001 > nul
 cls
 
-:: Zapret path
 call :PrintGreen "Zapret установлен в: '%~dp0'"
 echo:
 
@@ -455,16 +454,11 @@ echo:
 :: Proxy check
 set "proxyEnabled=0"
 set "proxyServer="
-
 for /f "tokens=2*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyEnable 2^>nul ^| findstr /i "ProxyEnable"') do (
     if "%%B"=="0x1" set "proxyEnabled=1"
 )
-
 if !proxyEnabled!==1 (
-    for /f "tokens=2*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer 2^>nul ^| findstr /i "ProxyServer"') do (
-        set "proxyServer=%%B"
-    )
-
+    for /f "tokens=2*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings" /v ProxyServer 2^>nul ^| findstr /i "ProxyServer"') do set "proxyServer=%%B"
     call :PrintYellow "[?] Системный прокси включён: !proxyServer!"
     call :PrintYellow "Убедитесь, что он рабочий, или отключите его."
 ) else (
@@ -472,18 +466,14 @@ if !proxyEnabled!==1 (
 )
 echo:
 
-:: TCP timestamps check
+:: TCP timestamps
 netsh interface tcp show global | findstr /i "timestamps" | findstr /i "enabled" > nul
 if !errorlevel!==0 (
     call :PrintGreen "TCP timestamps: OK"
 ) else (
     call :PrintYellow "[?] TCP timestamps выключены. Включаю..."
     netsh interface tcp set global timestamps=enabled > nul 2>&1
-    if !errorlevel!==0 (
-        call :PrintGreen "TCP timestamps успешно включены"
-    ) else (
-        call :PrintRed "[X] Не удалось включить TCP timestamps"
-    )
+    if !errorlevel!==0 ( call :PrintGreen "TCP timestamps успешно включены" ) else ( call :PrintRed "[X] Не удалось включить TCP timestamps" )
 )
 echo:
 
@@ -491,7 +481,11 @@ echo:
 tasklist /FI "IMAGENAME eq AdguardSvc.exe" | find /I "AdguardSvc.exe" > nul
 if !errorlevel!==0 (
     call :PrintRed "[X] Обнаружен Adguard. Он может мешать работе Discord."
-    call :PrintRed "https://github.com/Flowseal/zapret-discord-youtube/issues/417"
+    set /p "FIXAD=Закрыть процесс Adguard? (Y/N): "
+    if /i "!FIXAD!"=="Y" (
+        taskkill /IM AdguardSvc.exe /F >nul 2>&1
+        if !errorlevel!==0 ( call :PrintGreen "Adguard закрыт" ) else ( call :PrintRed "Не удалось закрыть Adguard" )
+    )
 ) else (
     call :PrintGreen "Adguard: OK"
 )
@@ -501,17 +495,17 @@ echo:
 sc query | findstr /I "Killer" > nul
 if !errorlevel!==0 (
     call :PrintRed "[X] Обнаружены службы Killer. Они конфликтуют с zapret."
-    call :PrintRed "https://github.com/Flowseal/zapret-discord-youtube/issues/2512#issuecomment-2821119513"
+    call :PrintYellow "Отключите их через services.msc вручную."
 ) else (
     call :PrintGreen "Killer: OK"
 )
 echo:
 
-:: Intel Connectivity Network Service
+:: Intel Connectivity
 sc query | findstr /I "Intel" | findstr /I "Connectivity" | findstr /I "Network" > nul
 if !errorlevel!==0 (
     call :PrintRed "[X] Обнаружена служба Intel Connectivity Network. Она конфликтует с zapret."
-    call :PrintRed "https://github.com/ValdikSS/GoodbyeDPI/issues/541#issuecomment-2661670982"
+    call :PrintYellow "Отключите её через services.msc вручную."
 ) else (
     call :PrintGreen "Intel Connectivity: OK"
 )
@@ -519,19 +513,11 @@ echo:
 
 :: Check Point
 set "checkpointFound=0"
-sc query | findstr /I "TracSrvWrapper" > nul
-if !errorlevel!==0 (
-    set "checkpointFound=1"
-)
-
-sc query | findstr /I "EPWD" > nul
-if !errorlevel!==0 (
-    set "checkpointFound=1"
-)
-
+sc query | findstr /I "TracSrvWrapper" > nul && set "checkpointFound=1"
+sc query | findstr /I "EPWD" > nul && set "checkpointFound=1"
 if !checkpointFound!==1 (
     call :PrintRed "[X] Обнаружены службы Check Point. Они конфликтуют с zapret."
-    call :PrintRed "Попробуйте удалить Check Point."
+    call :PrintYellow "Попробуйте удалить Check Point через Панель управления."
 ) else (
     call :PrintGreen "Check Point: OK"
 )
@@ -541,7 +527,7 @@ echo:
 sc query | findstr /I "SmartByte" > nul
 if !errorlevel!==0 (
     call :PrintRed "[X] Обнаружены службы SmartByte. Они конфликтуют с zapret."
-    call :PrintRed "Удалите или отключите SmartByte через services.msc"
+    call :PrintYellow "Удалите или отключите SmartByte через services.msc"
 ) else (
     call :PrintGreen "SmartByte: OK"
 )
@@ -550,8 +536,12 @@ echo:
 :: Cyrillic path
 powershell -NoProfile -Command "if ('%~dp0' -match '[\u0430-\u044F\u0410-\u042F\u0451\u0401]') { exit 0 } else { exit 1 }"
 if !errorlevel!==0 (
-    call :PrintYellow "[?] Путь установки содержит кириллицу."
-    call :PrintYellow "Если обход не работает, перенесите папку в C:\ZapretRKN"
+    call :PrintRed "[X] Путь содержит кириллицу: %~dp0"
+    call :PrintYellow "Перенесите папку в C:\ZapretRKN и запустите install.bat заново."
+    set /p "FIXPATH=Открыть инструкцию? (Y/N): "
+    if /i "!FIXPATH!"=="Y" (
+        start notepad "%~dp0README.md"
+    )
 ) else (
     call :PrintGreen "Путь без кириллицы: OK"
 )
@@ -562,7 +552,7 @@ if defined OneDrive (
     echo %~dp0\ | findstr /I /C:"%OneDrive%\\" > nul
     if !errorlevel!==0 (
         call :PrintRed "[X] Zapret установлен в папке OneDrive."
-        call :PrintRed "Перенесите папку в C:\ZapretRKN"
+        call :PrintYellow "Перенесите папку в C:\ZapretRKN"
     ) else (
         call :PrintGreen "OneDrive: OK"
     )
@@ -571,7 +561,7 @@ if defined OneDrive (
 )
 echo:
 
-:: WinDivert64.sys file
+:: WinDivert64.sys
 set "BIN_PATH=%~dp0bin\"
 if not exist "%BIN_PATH%\*.sys" (
     call :PrintRed "Файл WinDivert64.sys НЕ найден."
@@ -583,13 +573,9 @@ set "VPN_SERVICES="
 sc query | findstr /I "VPN" > nul
 if !errorlevel!==0 (
     for /f "tokens=2 delims=:" %%A in ('sc query ^| findstr /I "VPN"') do (
-        if not defined VPN_SERVICES (
-            set "VPN_SERVICES=!VPN_SERVICES!%%A"
-        ) else (
-            set "VPN_SERVICES=!VPN_SERVICES!,%%A"
-        )
+        if not defined VPN_SERVICES ( set "VPN_SERVICES=!VPN_SERVICES!%%A" ) else ( set "VPN_SERVICES=!VPN_SERVICES!,%%A" )
     )
-    call :PrintYellow "[?] Обнаружены VPN-службы:!VPN_SERVICES!. Они могут конфликтовать с zapret."
+    call :PrintYellow "[?] Обнаружены VPN-службы:!VPN_SERVICES!."
     call :PrintYellow "Убедитесь, что все VPN выключены."
 ) else (
     call :PrintGreen "VPN: OK"
@@ -599,9 +585,7 @@ echo:
 :: DNS
 set "dohfound=0"
 for /f "delims=" %%a in ('powershell -NoProfile -Command "Get-ChildItem -Recurse -Path 'HKLM:System\CurrentControlSet\Services\Dnscache\InterfaceSpecificParameters\' | Get-ItemProperty | Where-Object { $_.DohFlags -gt 0 } | Measure-Object | Select-Object -ExpandProperty Count"') do (
-    if %%a gtr 0 (
-        set "dohfound=1"
-    )
+    if %%a gtr 0 ( set "dohfound=1" )
 )
 if !dohfound!==0 (
     call :PrintYellow "[?] Настройте защищённый DNS в браузере (нестандартный провайдер),"
@@ -611,71 +595,38 @@ if !dohfound!==0 (
 )
 echo:
 
-:: Hosts file check
+:: Hosts file
 set "hostsFile=%SystemRoot%\System32\drivers\etc\hosts"
 if exist "%hostsFile%" (
     set "yt_found=0"
     >nul 2>&1 findstr /I "youtube.com" "%hostsFile%" && set "yt_found=1"
     >nul 2>&1 findstr /I "youtu.be" "%hostsFile%" && set "yt_found=1"
     if !yt_found!==1 (
-        call :PrintYellow "[?] В файле hosts есть записи youtube.com или youtu.be. Это может мешать доступу к YouTube."
+        call :PrintYellow "[?] В файле hosts есть записи youtube.com или youtu.be."
+        set /p "FIXHOSTS=Открыть hosts? (Y/N): "
+        if /i "!FIXHOSTS!"=="Y" (
+            start notepad "%hostsFile%"
+        )
     )
 )
 
 :: WinDivert conflict
 tasklist /FI "IMAGENAME eq winws.exe" | find /I "winws.exe" > nul
 set "winws_running=!errorlevel!"
-
 chcp 437 > nul
 sc query "WinDivert" | findstr /I "RUNNING STOP_PENDING" > nul
 chcp 65001 > nul
 set "windivert_running=!errorlevel!"
-
 if !winws_running! neq 0 if !windivert_running!==0 (
-    call :PrintYellow "[?] winws.exe не работает, но служба WinDivert активна. Пытаюсь удалить WinDivert..."
-
-    net stop "WinDivert" >nul 2>&1
-    sc delete "WinDivert" >nul 2>&1
-    sc query "WinDivert" >nul 2>&1
-    if !errorlevel!==0 (
-        call :PrintRed "[X] Не удалось удалить WinDivert. Проверяю конфликтующие службы..."
-
-        set "conflicting_services=GoodbyeDPI"
-        set "found_conflict=0"
-
-        for %%s in (!conflicting_services!) do (
-            sc query "%%s" >nul 2>&1
-            if !errorlevel!==0 (
-                call :PrintYellow "[?] Найдена конфликтующая служба: %%s. Останавливаю и удаляю..."
-                net stop "%%s" >nul 2>&1
-                sc delete "%%s" >nul 2>&1
-                if !errorlevel!==0 (
-                    call :PrintGreen "Служба %%s успешно удалена"
-                ) else (
-                    call :PrintRed "[X] Не удалось удалить службу: %%s"
-                )
-                set "found_conflict=1"
-            )
-        )
-
-        if !found_conflict!==0 (
-            call :PrintRed "[X] Конфликтующих служб не найдено. Проверьте вручную, не использует ли WinDivert другой обход."
-        ) else (
-            call :PrintYellow "[?] Повторная попытка удалить WinDivert..."
-
-            net stop "WinDivert" >nul 2>&1
-            sc delete "WinDivert" >nul 2>&1
-            sc query "WinDivert" >nul 2>&1
-            if !errorlevel! neq 0 (
-                call :PrintGreen "WinDivert успешно удалён после очистки конфликтов"
-            ) else (
-                call :PrintRed "[X] WinDivert всё ещё не удаляется. Проверьте вручную."
-            )
-        )
-    ) else (
-        call :PrintGreen "WinDivert успешно удалён"
+    call :PrintYellow "[?] winws.exe не работает, но служба WinDivert активна."
+    set /p "FIXWD=Удалить WinDivert? (Y/N): "
+    if /i "!FIXWD!"=="Y" (
+        net stop "WinDivert" >nul 2>&1
+        sc delete "WinDivert" >nul 2>&1
+        net stop "WinDivert14" >nul 2>&1
+        sc delete "WinDivert14" >nul 2>&1
+        call :PrintGreen "WinDivert удалён."
     )
-
     echo:
 )
 
@@ -683,72 +634,40 @@ if !winws_running! neq 0 if !windivert_running!==0 (
 set "conflicting_services=GoodbyeDPI discordfix_zapret winws1 winws2"
 set "found_any_conflict=0"
 set "found_conflicts="
-
 for %%s in (!conflicting_services!) do (
     sc query "%%s" >nul 2>&1
     if !errorlevel!==0 (
-        if "!found_conflicts!"=="" (
-            set "found_conflicts=%%s"
-        ) else (
-            set "found_conflicts=!found_conflicts! %%s"
-        )
+        if "!found_conflicts!"=="" ( set "found_conflicts=%%s" ) else ( set "found_conflicts=!found_conflicts! %%s" )
         set "found_any_conflict=1"
     )
 )
-
 if !found_any_conflict!==1 (
     call :PrintRed "[X] Найдены конфликтующие службы: !found_conflicts!"
-
-    set "CHOICE="
-    set /p "CHOICE=Удалить эти конфликтующие службы? (Y/N) (по умолчанию: N) "
-    if "!CHOICE!"=="" set "CHOICE=N"
-    if "!CHOICE!"=="y" set "CHOICE=Y"
-
-    if /i "!CHOICE!"=="Y" (
+    set /p "FIXCONF=Удалить эти службы? (Y/N): "
+    if /i "!FIXCONF!"=="Y" (
         for %%s in (!found_conflicts!) do (
-            call :PrintYellow "Останавливаю и удаляю службу: %%s"
             net stop "%%s" >nul 2>&1
             sc delete "%%s" >nul 2>&1
-            if !errorlevel!==0 (
-                call :PrintGreen "Служба %%s успешно удалена"
-            ) else (
-                call :PrintRed "[X] Не удалось удалить службу: %%s"
-            )
         )
-
         net stop "WinDivert" >nul 2>&1
         sc delete "WinDivert" >nul 2>&1
         net stop "WinDivert14" >nul 2>&1
         sc delete "WinDivert14" >nul 2>&1
+        call :PrintGreen "Конфликтующие службы удалены."
     )
-
     echo:
 )
 
-:: Discord cache clearing
+:: Discord cache
 set "CHOICE="
-set /p "CHOICE=Очистить кэш Discord (Stable, PTB, Canary, Development)? (Y/N) (по умолчанию: Y) "
+set /p "CHOICE=Очистить кэш Discord? (Y/N, по умолчанию Y): "
 if "!CHOICE!"=="" set "CHOICE=Y"
-if "!CHOICE!"=="y" set "CHOICE=Y"
-
 if /i "!CHOICE!"=="Y" (
     set "discordFound=0"
-    if exist "%APPDATA%\discord\" (
-        set "discordFound=1"
-        call :clear_discord_cache "Discord.exe" "Discord" "%APPDATA%\discord"
-    )
-    if exist "%APPDATA%\discordptb\" (
-        set "discordFound=1"
-        call :clear_discord_cache "DiscordPTB.exe" "Discord PTB" "%APPDATA%\discordptb"
-    )
-    if exist "%APPDATA%\discordcanary\" (
-        set "discordFound=1"
-        call :clear_discord_cache "DiscordCanary.exe" "Discord Canary" "%APPDATA%\discordcanary"
-    )
-    if exist "%APPDATA%\discorddevelopment\" (
-        set "discordFound=1"
-        call :clear_discord_cache "DiscordDevelopment.exe" "Discord Development" "%APPDATA%\discorddevelopment"
-    )
+    if exist "%APPDATA%\discord\" ( set "discordFound=1" & call :clear_discord_cache "Discord.exe" "Discord" "%APPDATA%\discord" )
+    if exist "%APPDATA%\discordptb\" ( set "discordFound=1" & call :clear_discord_cache "DiscordPTB.exe" "Discord PTB" "%APPDATA%\discordptb" )
+    if exist "%APPDATA%\discordcanary\" ( set "discordFound=1" & call :clear_discord_cache "DiscordCanary.exe" "Discord Canary" "%APPDATA%\discordcanary" )
+    if exist "%APPDATA%\discorddevelopment\" ( set "discordFound=1" & call :clear_discord_cache "DiscordDevelopment.exe" "Discord Development" "%APPDATA%\discorddevelopment" )
     if !discordFound! equ 0 call :PrintRed "Установки Discord не найдены"
     set "discordFound="
 )
