@@ -22,7 +22,10 @@ $vbsPath      = Join-Path $scriptDir "run_hidden.vbs"
 $checkerPath  = Join-Path $scriptDir "check_updates.ps1"
 $serviceBat   = Join-Path $projectRoot "service.bat"
 $generalBat   = Join-Path $projectRoot "general.bat"
+$stratDir     = Join-Path $projectRoot "strategies"
 $updateFile   = Join-Path $env:TEMP "zapret_update.txt"
+$regPath      = "HKLM:\System\CurrentControlSet\Services\zapret"
+$regValue     = "zapret-discord-youtube"
 
 # --- Dark renderer ---
 if (-not ("ZapretRKN_MenuRenderer" -as [type])) {
@@ -122,9 +125,17 @@ if (Test-Path $serviceBat) {
     if ($content -match 'LOCAL_VERSION=([\d\.]+)') { $script:localVersion = $matches[1] }
 }
 
+# --- Helpers ---
 function Get-ZapretStatus {
     $p = Get-Process -Name winws -ErrorAction SilentlyContinue
     if ($p) { return "running" } else { return "stopped" }
+}
+
+function Get-CurrentStrategy {
+    try {
+        $v = (Get-ItemProperty -Path $regPath -Name $regValue -ErrorAction Stop).$regValue
+        return $v
+    } catch { return $null }
 }
 
 function Test-Autostart {
@@ -159,32 +170,98 @@ function Start-UpdateCheck {
         -WindowStyle Hidden
 }
 
+function Switch-Strategy {
+    param([string]$Name)
+    $src = Join-Path $stratDir $Name
+    if (-not (Test-Path $src)) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Файл стратегии не найден: $src",
+            "ZapretRKN", [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+        return $false
+    }
+
+    Copy-Item -Path $src -Destination $generalBat -Force
+
+    try {
+        Set-ItemProperty -Path $regPath -Name $regValue -Value $Name -ErrorAction Stop
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Не удалось обновить реестр: нужны права администратора.`n`nФайл general.bat заменён, но название стратегии в меню не обновится.",
+            "ZapretRKN", [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        ) | Out-Null
+    }
+
+    Stop-Zapret
+    Start-Sleep -Milliseconds 300
+    Start-Zapret
+    return $true
+}
+
+# --- NotifyIcon ---
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $notifyIcon.Icon    = $iconRed
 $notifyIcon.Text    = "ZapretRKN"
 $notifyIcon.Visible = $true
 
+# --- Menu ---
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $menu.Renderer = New-Object ZapretRKN_MenuRenderer
 $menu.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 32)
 $menu.ForeColor = [System.Drawing.Color]::FromArgb(235, 235, 235)
 $menu.ShowImageMargin = $false
-$menu.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-$menu.Padding = New-Object System.Windows.Forms.Padding(0, 3, 0, 3)
+$menu.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+$menu.Padding = New-Object System.Windows.Forms.Padding(0, 2, 0, 2)
 
 $itemHeader    = New-Object System.Windows.Forms.ToolStripMenuItem("ZapretRKN")
 $itemHeader.Enabled = $false
 $itemToggle    = New-Object System.Windows.Forms.ToolStripMenuItem("Остановить")
 $itemRestart   = New-Object System.Windows.Forms.ToolStripMenuItem("Перезапустить")
 $itemService   = New-Object System.Windows.Forms.ToolStripMenuItem("Менеджер службы")
-$itemFolder    = New-Object System.Windows.Forms.ToolStripMenuItem("Открыть папку ZapretRKN")
+$itemFolder    = New-Object System.Windows.Forms.ToolStripMenuItem("Папка ZapretRKN")
 $itemAutostart = New-Object System.Windows.Forms.ToolStripMenuItem("Автозагрузка: выкл")
+
+# Стратегия (родительский пункт с подменю)
+$itemStrategy  = New-Object System.Windows.Forms.ToolStripMenuItem("Стратегия")
+$itemStrategy.ForeColor = [System.Drawing.Color]::FromArgb(135, 135, 135)
+
+# Заполняем подменю
+$script:strategyItems = @{}
+if (Test-Path $stratDir) {
+    $strategies = @(Get-ChildItem -Path $stratDir -Filter "*.bat" -ErrorAction SilentlyContinue | Sort-Object Name)
+    if ($strategies.Count -eq 0) {
+        $empty = New-Object System.Windows.Forms.ToolStripMenuItem("(нет стратегий)")
+        $empty.Enabled = $false
+        [void]$itemStrategy.DropDownItems.Add($empty)
+    } else {
+        foreach ($s in $strategies) {
+            $sub = New-Object System.Windows.Forms.ToolStripMenuItem($s.Name)
+            $sub.Tag = $s.Name
+            $sub.add_Click({
+                param($sender, $e)
+                $name = $sender.Tag
+                if (Switch-Strategy -Name $name) {
+                    Update-TrayState
+                }
+            })
+            [void]$itemStrategy.DropDownItems.Add($sub)
+            $script:strategyItems[$s.Name] = $sub
+        }
+    }
+} else {
+    $empty = New-Object System.Windows.Forms.ToolStripMenuItem("(папка strategies не найдена)")
+    $empty.Enabled = $false
+    [void]$itemStrategy.DropDownItems.Add($empty)
+}
+
 $itemCheckUpd  = New-Object System.Windows.Forms.ToolStripMenuItem("Проверить обновления")
 $itemAbout     = New-Object System.Windows.Forms.ToolStripMenuItem("О программе")
 $itemExit      = New-Object System.Windows.Forms.ToolStripMenuItem("Выход")
 
-$itemPadding = New-Object System.Windows.Forms.Padding(10, 3, 20, 3)
-foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAutostart, $itemCheckUpd, $itemAbout, $itemExit)) {
+$itemPadding = New-Object System.Windows.Forms.Padding(8, 2, 16, 2)
+foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAutostart, $itemStrategy, $itemCheckUpd, $itemAbout, $itemExit)) {
     $it.Padding = $itemPadding
 }
 
@@ -195,6 +272,7 @@ foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAut
 [void]$menu.Items.Add($itemService)
 [void]$menu.Items.Add($itemFolder)
 [void]$menu.Items.Add($itemAutostart)
+[void]$menu.Items.Add($itemStrategy)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 [void]$menu.Items.Add($itemCheckUpd)
 [void]$menu.Items.Add($itemAbout)
@@ -202,26 +280,43 @@ foreach ($it in @($itemToggle, $itemRestart, $itemService, $itemFolder, $itemAut
 
 $notifyIcon.ContextMenuStrip = $menu
 
+# --- State updater ---
 function Update-TrayState {
     $status = Get-ZapretStatus
     if ($status -eq "running") {
         $script:notifyIcon.Icon = $script:iconRed
-        $script:notifyIcon.Text = "ZapretRKN - работает"
+        $script:notifyIcon.Text = "ZapretRKN - Работает"
         $script:itemToggle.Text = "Остановить"
-        $script:itemHeader.Text = "ZapretRKN - работает"
+        $script:itemHeader.Text = "ZapretRKN - Работает"
     } else {
         $script:notifyIcon.Icon = $script:iconGrey
-        $script:notifyIcon.Text = "ZapretRKN - остановлен"
+        $script:notifyIcon.Text = "ZapretRKN - Остановлен"
         $script:itemToggle.Text = "Запустить"
-        $script:itemHeader.Text = "ZapretRKN - остановлен"
+        $script:itemHeader.Text = "ZapretRKN - Остановлен"
     }
     if (Test-Autostart) {
         $script:itemAutostart.Text = "Автозагрузка: ВКЛ"
     } else {
         $script:itemAutostart.Text = "Автозагрузка: выкл"
     }
+
+    $cur = Get-CurrentStrategy
+    if ($cur) {
+        $script:itemStrategy.Text = "Стратегия: $cur"
+    } else {
+        $script:itemStrategy.Text = "Стратегия: (не определена)"
+    }
+
+    foreach ($name in $script:strategyItems.Keys) {
+        if ($name -eq $cur) {
+            $script:strategyItems[$name].Checked = $true
+        } else {
+            $script:strategyItems[$name].Checked = $false
+        }
+    }
 }
 
+# --- Events ---
 $notifyIcon.add_BalloonTipClicked({
     Start-Process $script:releaseUrl
 })
@@ -229,9 +324,9 @@ $notifyIcon.add_BalloonTipClicked({
 $notifyIcon.add_MouseClick({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-        $status = if ((Get-ZapretStatus) -eq "running") { "работает" } else { "остановлен" }
+        $status = if ((Get-ZapretStatus) -eq "running") { "Работает" } else { "Остановлен" }
         $script:notifyIcon.BalloonTipTitle = "ZapretRKN"
-        $script:notifyIcon.BalloonTipText  = "Статус: $status"
+        $script:notifyIcon.BalloonTipText  = "$status"
         $script:notifyIcon.BalloonTipIcon  = [System.Windows.Forms.ToolTipIcon]::Info
         $script:notifyIcon.ShowBalloonTip(3000)
     }
@@ -298,6 +393,7 @@ $itemExit.add_Click({
     [System.Windows.Forms.Application]::Exit()
 })
 
+# --- Initial ---
 Start-Sleep -Milliseconds 100
 Hide-WinwsWindow
 Start-Sleep -Milliseconds 400

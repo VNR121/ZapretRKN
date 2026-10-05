@@ -110,12 +110,15 @@ echo.
 echo   :: ИНСТРУМЕНТЫ
 echo      11. Диагностика
 echo      12. Тесты стратегий
+echo      13. Сменить стратегию
+echo      14. Обновить движок
+echo      15. Автоподбор стратегии
 echo.
 echo   ----------------------------------------
 echo      0. Выход
 echo.
 
-set /p menu_choice=   Выберите пункт (0-12): 
+set /p menu_choice=   Выберите пункт (0-15): 
 
 if "%menu_choice%"=="1" goto service_install
 if "%menu_choice%"=="2" goto service_remove
@@ -129,6 +132,9 @@ if "%menu_choice%"=="9" goto hosts_update
 if "%menu_choice%"=="10" goto service_check_updates
 if "%menu_choice%"=="11" goto service_diagnostics
 if "%menu_choice%"=="12" goto run_tests
+if "%menu_choice%"=="13" goto strategy_switch
+if "%menu_choice%"=="14" goto engine_update
+if "%menu_choice%"=="15" goto autotest_strategy
 if "%menu_choice%"=="0" exit /b
 goto menu
 
@@ -676,6 +682,255 @@ echo:
 pause
 goto menu
 
+
+:: STRATEGY SWITCH ====================
+:strategy_switch
+chcp 65001 > nul
+cls
+
+set "STRAT_DIR=%~dp0strategies"
+if not exist "%STRAT_DIR%\" (
+    echo Папка strategies не найдена.
+    echo Проверьте, что она есть рядом с service.bat.
+    pause
+    goto menu
+)
+
+:: Текущая стратегия из реестра
+set "currentFile="
+for /f "tokens=2*" %%A in ('reg query "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtube 2^>nul') do set "currentFile=%%B"
+
+echo   Смена стратегии
+echo   ----------------------------------------
+echo.
+echo Текущая: !currentFile!
+echo.
+echo Доступные:
+echo.
+
+set "count=0"
+for /f "delims=" %%F in ('dir /b /o:n "%STRAT_DIR%\*.bat" 2^>nul') do (
+    set /a count+=1
+    echo   !count!. %%F
+    set "strat!count!=%%F"
+)
+
+if !count!==0 (
+    echo В папке strategies нет .bat файлов.
+    pause
+    goto menu
+)
+
+echo.
+echo   0. Отмена
+echo.
+set "strat_choice="
+set /p "strat_choice=Выберите номер (0-!count!, по умолчанию: 0): "
+if "!strat_choice!"=="" set "strat_choice=0"
+if "!strat_choice!"=="0" goto menu
+
+set "selected="
+for /l %%N in (1,1,!count!) do (
+    if "!strat_choice!"=="%%N" set "selected=!strat%%N!"
+)
+if not defined selected (
+    echo Неверный номер.
+    pause
+    goto strategy_switch
+)
+
+echo.
+echo Выбрана: !selected!
+echo Копирую поверх general.bat...
+
+copy /y "%STRAT_DIR%\!selected!" "%~dp0general.bat" >nul
+if errorlevel 1 (
+    call :PrintRed "Не удалось скопировать. Проверьте права."
+    pause
+    goto menu
+)
+
+:: Обновляем запись в реестре, чтобы отображалось в меню
+reg add "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtube /t REG_SZ /d "!selected!" /f >nul 2>&1
+
+call :PrintGreen "Стратегия успешно сменена: !selected!"
+
+:: Предложить перезапуск
+echo.
+set /p "restart=Перезапустить обход сейчас? (Y/N, по умолчанию Y): "
+if "!restart!"=="" set "restart=Y"
+if /i "!restart!"=="Y" (
+    call :PrintYellow "Перезапускаю..."
+
+    :: Останавливаем службу, если она есть
+    sc query "zapret" >nul 2>&1
+    if !errorlevel!==0 (
+        net stop zapret >nul 2>&1
+        sc start zapret >nul 2>&1
+    )
+
+    :: Убиваем winws.exe, если запущен вручную
+    taskkill /IM winws.exe /F >nul 2>&1
+
+    :: Запускаем general.bat скрыто
+    start /b "" "%~dp0general.bat"
+    call :PrintGreen "Обход перезапущен."
+)
+
+pause
+goto menu
+
+
+:: ENGINE UPDATE =======================
+:engine_update
+chcp 65001 > nul
+cls
+
+echo   Обновление движка (winws.exe + .bin)
+echo   ----------------------------------------
+echo.
+echo Что произойдёт:
+echo   - Скачаю последний релиз Flowseal с GitHub.
+echo   - Сделаю бэкап старого bin\ в utils\backup\.
+echo   - Заменю winws.exe, WinDivert64.sys и .bin-файлы.
+echo.
+echo Обход будет остановлен на время обновления.
+echo.
+
+set /p "eng_confirm=Продолжить? (Y/N): "
+if /i not "!eng_confirm!"=="Y" goto menu
+
+echo.
+echo Останавливаю обход...
+
+taskkill /IM winws.exe /F >nul 2>&1
+
+sc query "zapret" >nul 2>&1
+if !errorlevel!==0 (
+    net stop zapret >nul 2>&1
+)
+
+:: Останавливаем драйвер WinDivert, чтобы освободить .sys-файлы
+sc query "WinDivert" >nul 2>&1
+if !errorlevel!==0 (
+    net stop "WinDivert" >nul 2>&1
+)
+sc query "WinDivert14" >nul 2>&1
+if !errorlevel!==0 (
+    net stop "WinDivert14" >nul 2>&1
+)
+
+echo Ожидание освобождения файлов...
+timeout /t 3 /nobreak >nul
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\scripts\update_engine.ps1"
+if !errorlevel! neq 0 (
+    call :PrintRed "Обновление завершилось с ошибкой."
+    echo Бэкап старого bin лежит в utils\backup\.
+    pause
+    goto menu
+)
+
+echo.
+call :PrintGreen "Движок обновлён."
+echo.
+
+:: Перезапуск
+sc query "zapret" >nul 2>&1
+if !errorlevel!==0 (
+    set /p "eng_restart=Запустить службу обратно? (Y/N, по умолчанию Y): "
+    if "!eng_restart!"=="" set "eng_restart=Y"
+    if /i "!eng_restart!"=="Y" (
+        sc start zapret >nul 2>&1
+        call :PrintGreen "Служба запущена."
+    )
+) else (
+    set /p "eng_restart=Запустить обход вручную? (Y/N, по умолчанию Y): "
+    if "!eng_restart!"=="" set "eng_restart=Y"
+    if /i "!eng_restart!"=="Y" (
+        start /b "" "%~dp0general.bat"
+        call :PrintGreen "Обход запущен."
+    )
+)
+
+pause
+goto menu
+
+:: AUTOTEST STRATEGY ===================
+:autotest_strategy
+chcp 65001 > nul
+cls
+
+echo   Автоподбор стратегии
+echo   ----------------------------------------
+echo.
+echo Что произойдёт:
+echo   - Скрипт по очереди запустит каждую стратегию из strategies\.
+echo   - Проверит доступность YouTube, Discord, Google.
+echo   - Выберет лучшую и переключит на неё.
+echo.
+echo Обход будет остановлен на время теста (~1-2 минуты).
+echo.
+
+set /p "at_confirm=Продолжить? (Y/N): "
+if /i not "!at_confirm!"=="Y" goto menu
+
+echo.
+echo Останавливаю обход...
+taskkill /IM winws.exe /F >nul 2>&1
+sc query "zapret" >nul 2>&1
+if !errorlevel!==0 (
+    net stop zapret >nul 2>&1
+)
+
+del /f /q "%TEMP%\zapret_best_strategy.txt" >nul 2>&1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0utils\scripts\test_strategies.ps1"
+set "AT_RESULT=!errorlevel!"
+
+echo.
+if "!AT_RESULT!"=="2" (
+    call :PrintRed "Ни одна стратегия не сработала."
+    pause
+    goto menu
+)
+if "!AT_RESULT!" neq "0" (
+    call :PrintRed "Тест завершился с ошибкой."
+    pause
+    goto menu
+)
+
+set "BEST="
+for /f "usebackq delims=" %%B in ("%TEMP%\zapret_best_strategy.txt") do set "BEST=%%B"
+if not defined BEST (
+    call :PrintRed "Не удалось определить победителя."
+    pause
+    goto menu
+)
+
+echo Лучшая стратегия: !BEST!
+set /p "at_apply=Применить её? (Y/N, по умолчанию Y): "
+if "!at_apply!"=="" set "at_apply=Y"
+if /i not "!at_apply!"=="Y" goto menu
+
+copy /y "%~dp0strategies\!BEST!" "%~dp0general.bat" >nul
+reg add "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtube /t REG_SZ /d "!BEST!" /f >nul 2>&1
+
+call :PrintGreen "Стратегия применена: !BEST!"
+
+:: Перезапуск
+sc query "zapret" >nul 2>&1
+if !errorlevel!==0 (
+    sc start zapret >nul 2>&1
+    call :PrintGreen "Служба запущена."
+) else (
+    start /b "" "%~dp0general.bat"
+    call :PrintGreen "Обход запущен."
+)
+
+pause
+goto menu
 
 :: GAME SWITCH ========================
 :game_switch_status
