@@ -10,6 +10,7 @@ utils/check_updates.enabled
 # Сборка
 dev/
 release/
+bin_staging/
 *.zip
 
 # Системные файлы
