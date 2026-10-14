@@ -1,66 +1,10 @@
-# ==========================================
-# USER LISTS
-# Добавляйте домены по одному на строку.
-# Не оставляйте файл пустым!
-# ==========================================
+# Список ваших доменов. По одному на строку.
+# Пример:
+domain.example.abc
+genius.com
+cursor.com
+t3.chat
+cursor.com
 
-# ВНИМАНИЕ: домены ниже приведены исключительно как ПРИМЕРЫ
-# популярных сервисов, которые пользователи часто добавляют
-# самостоятельно. Это НЕ рекомендация автора и НЕ призыв
-# к обходу блокировок. Ответственность за использование
-# несёт конечный пользователь.
+github.com
 
-# --- Видеохостинги (YouTube / Google) ---
-youtube.com
-youtu.be
-googlevideo.com
-ytimg.com
-youtubei.googleapis.com
-ggpht.com
-
-# --- Discord ---
-discord.com
-discord.gg
-discordapp.com
-discordapp.net
-discord.media
-discord.co
-
-# --- Социальные сети ---
-instagram.com
-cdninstagram.com
-scontent.cdninstagram.com
-static.cdninstagram.com
-facebook.com
-fb.com
-fbcdn.net
-messenger.com
-x.com
-twitter.com
-t.co
-twimg.com
-
-# --- Мессенджеры ---
-signal.org
-whatsapp.com
-whatsapp.net
-
-# --- Стриминг и музыка ---
-spotify.com
-scdn.co
-spotifycdn.com
-soundcloud.com
-sndcdn.com
-twitch.tv
-ttvnw.net
-jtvnw.net
-
-# --- Прочее ---
-reddit.com
-redd.it
-redditmedia.com
-tiktok.com
-tiktokcdn.com
-tiktokv.com
-linkedin.com
-licdn.com

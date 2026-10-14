@@ -10,16 +10,25 @@ if not exist "%CSC%" (
     exit /b 1
 )
 
-set "OUT=%~dp0..\..\ZapretRKN.exe"
+set "ROOT=%~dp0..\..\"
+set "OUT=%ROOT%ZapretRKN.exe"
 set "ICON=%~dp0icon.ico"
 set "SRC=%~dp0launcher.cs"
 
+if not exist "%SRC%" (
+    echo [ОШИБКА] Не найден исходник: %SRC%
+    pause
+    exit /b 1
+)
+
 echo Компиляция ZapretRKN.exe...
 
+if exist "%OUT%" del /f /q "%OUT%"
+
 if exist "%ICON%" (
-    "%CSC%" /nologo /target:winexe /out:"%OUT%" /win32icon:"%ICON%" /r:System.Windows.Forms.dll "%SRC%"
+    "%CSC%" /nologo /optimize+ /target:winexe /out:"%OUT%" /win32icon:"%ICON%" /r:System.Windows.Forms.dll "%SRC%"
 ) else (
-    "%CSC%" /nologo /target:winexe /out:"%OUT%" /r:System.Windows.Forms.dll "%SRC%"
+    "%CSC%" /nologo /optimize+ /target:winexe /out:"%OUT%" /r:System.Windows.Forms.dll "%SRC%"
 )
 
 if errorlevel 1 (
@@ -28,5 +37,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Готово: %OUT%
+if not exist "%OUT%" (
+    echo [ОШИБКА] Файл не создан.
+    pause
+    exit /b 1
+)
+
+for %%A in ("%OUT%") do echo Готово: %%A (%%~zA байт)
 pause

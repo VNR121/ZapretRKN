@@ -80,7 +80,7 @@ function New-ZapretIcon {
 
         $ms = New-Object System.IO.MemoryStream
         $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-        $pngDatas += ,$ms.ToArray()
+        $pngDatas += [byte[]]$ms.ToArray()
         $ms.Dispose()
         $bmp.Dispose()
     }

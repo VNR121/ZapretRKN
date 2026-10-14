@@ -5,7 +5,7 @@ cd /d "%~dp0"
 :: --- Самоэлевация через UAC ---
 if /i not "%~1"=="elevated" (
     net session >nul 2>&1
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo Запрос прав администратора...
         powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList 'elevated' -Verb RunAs"
         exit /b
@@ -40,12 +40,21 @@ if /i "%AUTOSTART%"=="n" (
 )
 echo.
 
-:: --- Шаг 2: Проверка файла ---
+:: --- Шаг 2: Проверка файлов ---
 set "SHORTCUT_NAME=ZapretRKN"
 set "TARGET_BAT=%~dp0general.bat"
+set "RUN_HIDDEN=%~dp0utils\scripts\run_hidden.vbs"
 
 if not exist "%TARGET_BAT%" (
     echo [ОШИБКА] Не найден файл "general.bat"
+    timeout /t 5 /nobreak >nul
+    exit /b 1
+)
+
+:: run_hidden.vbs обязателен для скрытого запуска (ярлык + автозагрузка)
+if not exist "%RUN_HIDDEN%" (
+    echo [ОШИБКА] Не найден "%RUN_HIDDEN%"
+    echo Без него обход будет запускаться в видимом окне.
     timeout /t 5 /nobreak >nul
     exit /b 1
 )
@@ -58,13 +67,14 @@ if not exist "%ICON%" (
     set "ICON=shell32.dll,137"
 )
 
-:: --- Шаг 4: Создание ярлыка ---
+:: --- Шаг 4: Создание ярлыка (идемпотентно: старый удаляется) ---
 echo Создание ярлыка...
 
 set "PS1=%TEMP%\zapret_make_shortcut.ps1"
 > "%PS1%" echo $ErrorActionPreference = 'Stop'
 >> "%PS1%" echo $desktop = [Environment]::GetFolderPath('Desktop')
 >> "%PS1%" echo $lnkPath = Join-Path $desktop 'ZapretRKN.lnk'
+>> "%PS1%" echo if (Test-Path $lnkPath) { Remove-Item $lnkPath -Force }
 >> "%PS1%" echo $ws = New-Object -ComObject WScript.Shell
 >> "%PS1%" echo $sc = $ws.CreateShortcut($lnkPath)
 >> "%PS1%" echo $sc.TargetPath = "$env:SystemRoot\System32\cmd.exe"
@@ -106,7 +116,12 @@ if "%AUTOSTART_FLAG%"=="1" (
     >> "%PS2%" echo Write-Host "Autostart task registered."
 
     powershell -NoProfile -ExecutionPolicy Bypass -File "%PS2%"
+    set "PS2_RESULT=%errorlevel%"
     del /f /q "%PS2%" 2>nul
+
+    if not "%PS2_RESULT%"=="0" (
+        echo [ПРЕДУПРЕЖДЕНИЕ] Ярлык создан, но задача автозагрузки не зарегистрирована.
+    )
 ) else (
     echo Удаление задачи автозагрузки ^(если была^)...
     powershell -NoProfile -Command "Unregister-ScheduledTask -TaskName 'ZapretRKN' -Confirm:$false -ErrorAction SilentlyContinue" >nul 2>&1

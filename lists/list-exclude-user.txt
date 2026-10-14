@@ -1,1 +1,15 @@
 domain.example.abc
+chatgpt.com
+chat.openai.com
+openai.com
+oaiusercontent.com
+anthropic.com
+claude.ai
+claude.com
+gemini.google.com
+bard.google.com
+perplexity.ai
+deepseek.com
+chat.deepseek.com
+api.deepseek.com
+static.deepseek.com
