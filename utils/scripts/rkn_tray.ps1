@@ -341,6 +341,14 @@ function Show-UserListsEditor {
 }
 
 # --- NotifyIcon ---
+# --- Дождаться загрузки Explorer (иначе трей не появится при автозапуске) ---
+$wait = 0
+while (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue) -and $wait -lt 90) {
+    Start-Sleep -Seconds 2
+    $wait += 2
+}
+Start-Sleep -Seconds 3
+
 $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $script:notifyIcon.Icon    = $script:iconRed
 $script:notifyIcon.Text    = "ZapretRKN"
