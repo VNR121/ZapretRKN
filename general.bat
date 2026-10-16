@@ -4,20 +4,26 @@ chcp 65001 > nul
 
 cd /d "%~dp0"
 
-rem --- Защита от повторного запуска (конфликт WinDivert) ---
-tasklist /FI "IMAGENAME eq winws.exe" 2>nul | find /I "winws.exe" >nul
-if not errorlevel 1 exit /b 0
-if not exist "%~dp0bin\winws.exe" exit /b 1
-call service.bat load_game_filter
-call service.bat load_user_lists
-
-rem --- Запуск трея (аргумент "notray" отключает) ---
+rem --- Запуск трея (аргумент "notray" отключает). ДО singleton-проверки,
+rem     чтобы трей поднимался даже если winws уже работает.
 if /i not "%~1"=="notray" if exist "%~dp0utils\scripts\rkn_tray.ps1" (
     start /b "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0utils\scripts\rkn_tray.ps1"
 )
 
+rem --- Защита от повторного запуска (конфликт WinDivert) ---
+tasklist /FI "IMAGENAME eq winws.exe" 2>nul | find /I "winws.exe" >nul
+if not errorlevel 1 exit /b 0
+if not exist "%~dp0bin\winws.exe" exit /b 1
+
 set "BIN=%~dp0bin\"
 set "LISTS=%~dp0lists\"
+
+call service.bat load_game_filter
+call service.bat load_user_lists
+
+if not exist "%LISTS%list-google.txt" type nul > "%LISTS%list-google.txt"
+if not exist "%LISTS%ipset-all.txt" type nul > "%LISTS%ipset-all.txt"
+
 cd /d "%BIN%"
 
 start /b "" "%BIN%winws.exe" --wf-tcp=80,443,2053,2083,2087,2096,8443,%GameFilterTCP% --wf-udp=443,19294-19344,50000-50100,%GameFilterUDP% ^
