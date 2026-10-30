@@ -292,8 +292,13 @@ function Show-UserListsEditor {
     $textBox.AcceptsReturn = $true
 
     if (Test-Path $script:userListFile) {
-        try { $textBox.Text = [System.IO.File]::ReadAllText($script:userListFile, [System.Text.Encoding]::UTF8) }
-        catch { $textBox.Text = "" }
+        try {
+            $raw = [System.IO.File]::ReadAllText($script:userListFile, [System.Text.Encoding]::UTF8)
+            $raw = $raw -replace "`r`n", "`n" -replace "`r", "`n"
+            $textBox.Text = $raw -replace "`n", "`r`n"
+        } catch {
+            $textBox.Text = ""
+        }
     } else {
         $textBox.Text = "# Список ваших доменов. По одному на строку.`r`n# Пример:`r`ndomain.example.abc"
     }
@@ -324,18 +329,32 @@ function Show-UserListsEditor {
             $form.DialogResult = "OK"
             $form.Close()
         } catch {
-            [System.Windows.Forms.MessageBox]::Show("Не удалось сохранить: $($_.Exception.Message)", "ZapretRKN",
-                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+            [System.Windows.Forms.MessageBox]::Show(
+                "Не удалось сохранить файл: $($_.Exception.Message)",
+                "ZapretRKN",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
         }
     })
-    $btnCancel.add_Click({ $form.DialogResult = "Cancel"; $form.Close() })
 
-    if ($form.ShowDialog() -eq "OK") {
+    $btnCancel.add_Click({
+        $form.DialogResult = "Cancel"
+        $form.Close()
+    })
+
+    $result = $form.ShowDialog()
+    if ($result -eq "OK") {
         $restart = [System.Windows.Forms.MessageBox]::Show(
-            "Список сохранён. Перезапустить обход сейчас?", "ZapretRKN",
-            [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+            "Список сохранён. Перезапустить обход сейчас?",
+            "ZapretRKN",
+            [System.Windows.Forms.MessageBoxButtons]::YesNo,
+            [System.Windows.Forms.MessageBoxIcon]::Question
+        )
         if ($restart -eq "Yes") {
-            Stop-Zapret; Start-Sleep -Milliseconds 300; Start-Zapret
+            Stop-Zapret
+            Start-Sleep -Milliseconds 300
+            Start-Zapret
         }
     }
 }
@@ -375,10 +394,12 @@ $script:itemAutostart = New-Object System.Windows.Forms.ToolStripMenuItem("Ав�
 $itemMore = New-Object System.Windows.Forms.ToolStripMenuItem("Ещё")
 $script:itemService  = New-Object System.Windows.Forms.ToolStripMenuItem("Менеджер службы")
 $script:itemFolder   = New-Object System.Windows.Forms.ToolStripMenuItem("Папка ZapretRKN")
+$itemLogs            = New-Object System.Windows.Forms.ToolStripMenuItem("Открыть лог")
 $itemCheckUpd        = New-Object System.Windows.Forms.ToolStripMenuItem("Проверить обновления")
 $itemAbout           = New-Object System.Windows.Forms.ToolStripMenuItem("О программе")
 [void]$itemMore.DropDownItems.Add($script:itemService)
 [void]$itemMore.DropDownItems.Add($script:itemFolder)
+[void]$itemMore.DropDownItems.Add($itemLogs)
 [void]$itemMore.DropDownItems.Add($itemCheckUpd)
 [void]$itemMore.DropDownItems.Add($itemAbout)
 
@@ -418,6 +439,20 @@ foreach ($it in @($script:itemToggle, $script:itemRestart, $script:itemStrategy,
 
 [void]$menu.Items.Add($script:itemHeader)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+
+if (-not $script:isAdmin) {
+    $itemElevate = New-Object System.Windows.Forms.ToolStripMenuItem("Запустить от имени администратора")
+    $itemElevate.ForeColor = [System.Drawing.Color]::FromArgb(255, 100, 100)
+    $itemElevate.Padding = $itemPadding
+    $itemElevate.add_Click({
+        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Definition)`"" -Verb RunAs
+        $script:notifyIcon.Visible = $false
+        [System.Windows.Forms.Application]::Exit()
+    })
+    [void]$menu.Items.Add($itemElevate)
+    [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+}
+
 [void]$menu.Items.Add($script:itemToggle)
 [void]$menu.Items.Add($script:itemRestart)
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
@@ -547,6 +582,7 @@ $script:itemAutostart.add_Click({
 
 $script:itemService.add_Click({ Start-Process -FilePath $script:serviceBat -WorkingDirectory $script:projectRoot })
 $script:itemFolder.add_Click({ Start-Process -FilePath "explorer.exe" -ArgumentList "`"$script:projectRoot`"" })
+$itemLogs.add_Click({ Start-Process "notepad.exe" -ArgumentList "`"$logPath`"" })
 
 $itemCheckUpd.add_Click({
     $script:notifiedVersion = $null
@@ -560,7 +596,7 @@ $itemCheckUpd.add_Click({
 
 $itemAbout.add_Click({
     [System.Windows.Forms.MessageBox]::Show(
-        "ZapretRKN v1.2.1`nОбход DPI-блокировок`n`nФорк Flowseal/zapret-discord-youtube`nhttps://github.com/VNR121/ZapretRKN",
+        "ZapretRKN v1.2.2`nОбход DPI-блокировок`n`nФорк Flowseal/zapret-discord-youtube`nhttps://github.com/VNR121/ZapretRKN",
         "О программе", [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
 })

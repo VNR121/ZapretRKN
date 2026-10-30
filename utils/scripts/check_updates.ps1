@@ -1,6 +1,7 @@
 ﻿# check_updates.ps1
 $ErrorActionPreference = "SilentlyContinue"
 
+$logPath = Join-Path $env:TEMP "zapret_tray.log"
 $root       = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $serviceBat = Join-Path $root "service.bat"
 $outFile    = Join-Path $env:TEMP "zapret_update.txt"
@@ -18,7 +19,10 @@ $url = "https://raw.githubusercontent.com/VNR121/ZapretRKN/main/.service/version
 $remote = $null
 try {
     $remote = (Invoke-RestMethod -Uri $url -TimeoutSec 8 -Headers @{ "Cache-Control" = "no-cache" }).Trim()
-} catch { exit }
+} catch {
+    "Update check failed: $($_.Exception.Message)" | Out-File -Append -Encoding UTF8 $logPath
+    exit
+}
 
 if (-not $remote) { exit }
 

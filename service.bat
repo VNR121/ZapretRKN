@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-set "LOCAL_VERSION=1.2.1"
+set "LOCAL_VERSION=1.2.2"
 
 if "%~1"=="status_zapret" (
     call :test_service zapret soft
@@ -545,7 +545,41 @@ if /i "!CHOICE!"=="Y" (
     set "discordFound="
 )
 echo:
-pause
+echo:
+echo ========================================
+set "SAVE_DIAG="
+set /p "SAVE_DIAG=Сохранить отчет в файл для форума? (Y/N): "
+if /i "!SAVE_DIAG!"=="Y" goto service_diag_save
+goto service_diag_end
+
+:service_diag_save
+for /f %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "DATESTR=%%d"
+set "DIAG_FILE=%~dp0diagnostics_!DATESTR!.txt"
+(
+    echo ZapretRKN Diagnostics Report
+    echo Date: %DATE% %TIME%
+    echo.
+    echo === NETWORK SERVICES ===
+    sc query BFE
+    sc query Dnscache
+    sc query WinDivert
+    sc query WinDivert14
+    echo.
+    echo === ZAPRET STATUS ===
+    tasklist /FI "IMAGENAME eq winws.exe"
+    sc query zapret
+    echo.
+    echo === CONFIG ===
+    type "%~dp0bin\engine_version.txt" 2>nul
+    reg query "HKLM\System\CurrentControlSet\Services\zapret" /v zapret-discord-youtube 2>nul
+) > "!DIAG_FILE!"
+call :PrintGreen "Отчет сохранен: !DIAG_FILE!"
+start "" notepad "!DIAG_FILE!"
+
+:service_diag_end
+echo.
+echo.
+set /p "exit_diag=Нажмите Enter, чтобы вернуться в меню..."
 goto menu
 
 
@@ -605,6 +639,13 @@ if not defined selected (
 
 echo.
 echo Выбрана: !selected!
+
+tasklist /FI "IMAGENAME eq winws.exe" | find /I "winws.exe" > nul
+if !errorlevel!==0 (
+    call :PrintYellow "Обход запущен. Останавливаю для смены стратегии..."
+    taskkill /IM winws.exe /F >nul 2>&1
+    timeout /t 1 /nobreak >nul
+)
 
 copy /y "%STRAT_DIR%\!selected!" "%~dp0general.bat" >nul
 if errorlevel 1 (

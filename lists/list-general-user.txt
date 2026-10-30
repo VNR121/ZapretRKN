@@ -1,10 +1,5 @@
 # Список ваших доменов. По одному на строку.
 # Пример:
 domain.example.abc
-genius.com
-cursor.com
-t3.chat
-cursor.com
-
-github.com
-
+blink.new
+openrouter.ai

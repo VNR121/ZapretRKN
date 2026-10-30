@@ -4,21 +4,32 @@ chcp 65001 > nul
 
 cd /d "%~dp0"
 
-rem --- Защита от повторного запуска (конфликт WinDivert) ---
+rem --- Запуск трея ДО гарда: экземпляр, нашедший работающий winws,
+rem --- все равно должен обеспечить видимый трей. В Session 0 (служба) трей не стартуем.
+set "START_TRAY=0"
+if /i not "%~1"=="notray" if exist "%~dp0utils\scripts\rkn_tray.ps1" set "START_TRAY=1"
+if %START_TRAY%==1 (
+    powershell -NoProfile -Command "exit [Diagnostics.Process]::GetCurrentProcess().SessionId" 2>nul
+    if not errorlevel 1 set "START_TRAY=0"
+)
+if %START_TRAY%==1 (
+    start /b "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0utils\scripts\rkn_tray.ps1"
+)
+
+rem --- Защита от повторного запуска (конфликт WinDivert), двойная проверка ---
 tasklist /FI "IMAGENAME eq winws.exe" 2>nul | find /I "winws.exe" >nul
 if not errorlevel 1 exit /b 0
+timeout /t 2 /nobreak >nul
+tasklist /FI "IMAGENAME eq winws.exe" 2>nul | find /I "winws.exe" >nul
+if not errorlevel 1 exit /b 0
+
 if not exist "%~dp0bin\winws.exe" exit /b 1
 call service.bat load_game_filter
 call service.bat load_user_lists
 
-rem --- Запуск трея (аргумент "notray" отключает) ---
-if /i not "%~1"=="notray" if exist "%~dp0utils\scripts\rkn_tray.ps1" (
-    start /b "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0utils\scripts\rkn_tray.ps1"
-)
-
 set "BIN=%~dp0bin\"
 set "LISTS=%~dp0lists\"
-cd /d "%BIN%"
+cd /d %BIN%
 
 start /b "" "%BIN%winws.exe" --wf-tcp=80,443,2053,2083,2087,2096,8443,%GameFilterTCP% --wf-udp=443,19294-19344,50000-50100,%GameFilterUDP% ^
 --filter-udp=443 --hostlist="%LISTS%list-general.txt" --hostlist="%LISTS%list-general-user.txt" --hostlist-exclude="%LISTS%list-exclude.txt" --hostlist-exclude="%LISTS%list-exclude-user.txt" --ipset-exclude="%LISTS%ipset-exclude.txt" --ipset-exclude="%LISTS%ipset-exclude-user.txt" --dpi-desync=fake --dpi-desync-repeats=11 --dpi-desync-fake-quic="%BIN%quic_initial_www_google_com.bin" --new ^

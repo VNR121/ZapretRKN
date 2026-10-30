@@ -35,7 +35,7 @@ function Stop-Winws {
 }
 
 function Wait-Winws {
-    param([int]$TimeoutSec = 6)
+    param([int]$TimeoutSec = 10) # Увеличено с 6 до 10 секунд
     $sw = [Diagnostics.Stopwatch]::StartNew()
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         if (Get-Process -Name winws -ErrorAction SilentlyContinue) { return $true }
@@ -61,7 +61,7 @@ function Test-Strategy {
     $proc = Start-Process -FilePath "cmd.exe" `
         -ArgumentList "/c", "`"$generalBat`" notray" `
         -WindowStyle Hidden -PassThru
-    if (-not (Wait-Winws -TimeoutSec 6)) {
+    if (-not (Wait-Winws -TimeoutSec 10)) {
         try { if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force } } catch { }
         Stop-Winws
         return $null

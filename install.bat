@@ -17,13 +17,25 @@ echo   Установка ZapretRKN
 echo ========================================
 echo.
 
-:: --- Шаг 0: Проверка кириллицы в пути ---
+:: --- Шаг 0: Проверка кириллицы и пробелов в пути ---
 echo %~dp0 | findstr /R /C:"[А-Яа-яЁё]" >nul
 if not errorlevel 1 (
-    echo [ОШИБКА] Путь содержит русские буквы: %~dp0
-    echo Перенесите папку в C:\ZapretRKN и запустите снова.
-    timeout /t 10 /nobreak >nul
-    exit /b 1
+    echo [ВНИМАНИЕ] Путь содержит русские буквы: %~dp0
+    set /p "MOVE_FIX=Автоматически перенести в C:\ZapretRKN? (Y/N): "
+    if /i "!MOVE_FIX!"=="Y" (
+        if /i not "%~dp0"=="C:\ZapretRKN\" (
+            echo Перенос файлов...
+            if not exist "C:\ZapretRKN\" mkdir "C:\ZapretRKN\"
+            xcopy /E /I /Y "%~dp0*" "C:\ZapretRKN\" >nul
+            echo Запуск установки из новой папки...
+            start "" "C:\ZapretRKN\install.bat" elevated
+            exit /b
+        )
+    ) else (
+        echo Пожалуйста, перенесите папку вручную в C:\ZapretRKN и запустите снова.
+        timeout /t 10 /nobreak >nul
+        exit /b 1
+    )
 )
 
 :: --- Шаг 1: Автозагрузка ---
